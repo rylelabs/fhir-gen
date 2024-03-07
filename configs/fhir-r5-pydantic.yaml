@@ -1,0 +1,20 @@
+rendering:
+  template: templates/pydantic_project
+  output_dir: generated/fhir-r5-pydantic
+  variables:
+    project_name: fhir-r5-pydantic
+    package_name: fhir_pydantic
+definitions:
+  class_path: fhir_gen.Definitions
+  init_args:
+    url: https://hl7.org/fhir/R5/definitions.json.zip
+    version: R5
+    bundles:
+      - dataelements.json
+      - valuesets.json
+      - profiles-types.json
+      - profiles-resources.json
+mappings:
+  string: builtins.str
+  decimal: builtins.float
+  

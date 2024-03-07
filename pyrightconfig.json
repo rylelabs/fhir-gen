@@ -1,0 +1,8 @@
+{
+  "venvPath": ".venv",
+  "include": [
+    "fhir_gen"
+  ],
+  "typeCheckingMode": "standard",
+  "reportIncompatibleMethodOverride": "information"
+}
