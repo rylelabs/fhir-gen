@@ -57,6 +57,7 @@ class Ref(Generic[T_Ref]):
 @dataclasses.dataclass(kw_only=True)
 class FHIRType:
     name: str
+    base: Optional[Ref["FHIRType"]] = None
 
 
 @dataclasses.dataclass(kw_only=True)
