@@ -7,13 +7,10 @@ rendering:
 definitions:
   class_path: fhir_gen.Definitions
   init_args:
-    url: https://hl7.org/fhir/R5/definitions.json.zip
-    version: R5
+    url: https://build.fhir.org/ig/HL7/ccda-on-fhir/definitions.json.zip
+    version: 1.2.0
     sources:
-      - dataelements.json
-      - valuesets.json
-      - profiles-types.json
-      - profiles-resources.json
+      - StructureDefinition-US-Realm-Header.json
 mappings:
   "http://hl7.org/fhirpath/System.String": builtins.str
   

@@ -19,13 +19,7 @@ def generate(
     parser = Parser(mappings=mappings)
     renderer = Renderer(rendering)
 
-    renderer(
-        parser(
-            entry.resource
-            for bundle in definitions.iter_bundles(cache_dir=cache_dir)
-            for entry in bundle.entry
-        )
-    )
+    renderer(parser(definitions.iter_resources(cache_dir=cache_dir)))
 
 
 def main():

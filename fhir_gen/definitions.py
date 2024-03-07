@@ -5,6 +5,7 @@ import os.path
 import tempfile
 import zipfile
 import contextlib
+import json
 
 from dataclasses import dataclass, field
 from dataclass_wizard import JSONWizard
@@ -116,6 +117,7 @@ class StructureDefinition(Resource):
     class Snapshot(Base):
         element: List[ElementDefinition]
 
+    type: str
     snapshot: Snapshot
     abstract: bool
     kind: Union[
@@ -164,28 +166,36 @@ class BundleEntry(Element):
 
 
 @dataclass(kw_only=True)
-class Bundle(Resource, JSONWizard):
-
-    class _(JSONWizard.Meta):
-        tag_key = "resourceType"
-        auto_assign_tags = True
+class Bundle(Resource):
 
     type: Literal["collection"]
     entry: List[BundleEntry]
 
 
+@dataclass(kw_only=True)
+class Container(JSONWizard):
+    class _(JSONWizard.Meta):
+        tag_key = "resourceType"
+        auto_assign_tags = True
+
+    root: Union[StructureDefinition, Bundle]
+
+
 class Definitions:
 
     def __init__(
-        self, url: str, bundles: Sequence[str], version: Optional[str] = None
+        self,
+        url: str,
+        sources: Sequence[str],
+        version: Optional[str] = None,
     ) -> None:
         self.url = url
         self.version = version
-        self.bundles = list(bundles)
+        self.sources = list(sources)
 
-    def iter_bundles(
+    def iter_containers(
         self, *, cache_dir: Optional[str], chunk_size: int = 512
-    ) -> Iterator[Bundle]:
+    ) -> Iterator[Container]:
 
         if cache_dir is not None and not os.path.exists(cache_dir):
             os.mkdir(cache_dir)
@@ -213,10 +223,18 @@ class Definitions:
             assert os.path.exists(fname)
 
             with zipfile.ZipFile(fname, mode="r") as zip:
-                for name in self.bundles:
-                    data = zip.open(name)
-                    bundle = Bundle.from_json(data.read())
-                    if not isinstance(bundle, Bundle):
-                        raise ValueError(name)
+                for name in self.sources:
+                    root = json.load(zip.open(name))
 
-                    yield bundle
+                    container = Container.from_dict({"root": root})
+                    assert isinstance(container, Container)
+
+                    yield container
+
+    def iter_resources(self, *args, **kwargs):
+        for container in self.iter_containers(*args, **kwargs):
+            if isinstance(container.root, StructureDefinition):
+                yield container.root
+            elif isinstance(container.root, Bundle):
+                for entry in container.root.entry:
+                    yield entry.resource

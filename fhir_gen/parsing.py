@@ -5,6 +5,7 @@ from typing import (
     Type,
     Optional,
     TypeVar,
+    Union,
     Generic,
     cast,
     List,
@@ -65,7 +66,7 @@ class FHIRPrimitiveType(FHIRType): ...
 @dataclasses.dataclass(kw_only=True)
 class FHIRProperty:
     name: str
-    type: Sequence[Ref[FHIRType]]
+    type: Sequence[Union[Ref[FHIRType], Type]]
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -156,11 +157,11 @@ class Parser(Visitor[definitions.Base]):
         current: Optional[FHIRType] = None
 
         if node.kind == "complex-type":
-            current = FHIRComplexType(name=node.id)
+            current = FHIRComplexType(name=node.type)
         elif node.kind == "primitive-type":
-            current = FHIRPrimitiveType(name=node.id)
+            current = FHIRPrimitiveType(name=node.type)
         elif node.kind == "resource":
-            current = FHIRComplexType(name=node.id)
+            current = FHIRComplexType(name=node.type)
 
         if isinstance(current, FHIRComplexType):
             self.parse_FHIRComplexType_ElementDefinitions(
@@ -189,6 +190,8 @@ class Parser(Visitor[definitions.Base]):
                 for child in node.type:
                     if self.visit(child) is not NotImplemented:
                         types.append(self.require(child.code, FHIRType))
+                    elif child.code in self._mappings:
+                        types.append(self._mappings[child.code])
 
                 self.context.scope.properties.append(
                     FHIRProperty(name=node.path[-1], type=types)
@@ -199,7 +202,7 @@ class Parser(Visitor[definitions.Base]):
         return NotImplemented
 
     def visit_Type(self, node: definitions.ElementDefinition.Type):
-        if node.code == "http://hl7.org/fhirpath/System.String":
+        if node.code in self._mappings:
             return NotImplemented
 
     def __call__(self, nodes: Iterable[definitions.Base]) -> ParseOutput:
