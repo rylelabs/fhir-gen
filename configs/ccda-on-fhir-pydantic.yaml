@@ -1,9 +1,9 @@
 rendering:
   template: templates/pydantic_project
-  output_dir: generated/fhir-r5-pydantic
+  output_dir: generated/ccda-on-fhir-pydantic
   variables:
-    project_name: fhir-r5-pydantic
-    package_name: fhir_pydantic
+    project_name: ccda-on-fhir-pydantic
+    package_name: ccda_on_fhir_pydantic
 definitions:
   class_path: fhir_gen.Definitions
   init_args:
