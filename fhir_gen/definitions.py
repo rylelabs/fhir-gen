@@ -7,7 +7,7 @@ import zipfile
 import contextlib
 import json
 
-from dataclasses import dataclass, field
+import dataclasses
 from dataclass_wizard import JSONWizard
 
 
@@ -65,33 +65,33 @@ class Path(Sequence):
         raise TypeError(type(other))
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class Resource(Base):
     id: str
     resourceType: str
     meta: dict
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class Element(Base):
     id: Optional[str] = None
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class ElementDefinition(Element):
 
-    @dataclass(kw_only=True)
+    @dataclasses.dataclass(kw_only=True)
     class Type(Element):
         code: str
 
-    @dataclass(kw_only=True)
+    @dataclasses.dataclass(kw_only=True)
     class Base(Element):
         path: str
         min: int
         max: str
 
     path: str  # type: ignore
-    _path: Path = field(repr=False, init=False)
+    _path: Path = dataclasses.field(repr=False, init=False)
 
     @property
     def path(self) -> Path:
@@ -105,18 +105,20 @@ class ElementDefinition(Element):
     max: str
     base: Optional[Base] = None
     comment: Optional[str] = None
-    type: List[Type] = field(default_factory=list)
+    type: List[Type] = dataclasses.field(default_factory=list)
 
 
-@dataclass(
+@dataclasses.dataclass(
     kw_only=True,
 )
 class StructureDefinition(Resource):
 
-    @dataclass(kw_only=True)
+    @dataclasses.dataclass(kw_only=True)
     class Snapshot(Base):
         element: List[ElementDefinition]
 
+    url: str
+    name: str
     type: str
     snapshot: Snapshot
     abstract: bool
@@ -127,33 +129,36 @@ class StructureDefinition(Resource):
         Literal["resource"],
     ]
 
+    derivation: Optional[str] = None
+    baseDefinition: Optional[str] = None
 
-@dataclass(kw_only=True)
+
+@dataclasses.dataclass(kw_only=True)
 class ValueSet(Resource):
     url: str
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class CodeSystem(Resource):
     pass
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class CapabilityStatement(Resource):
     pass
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class OperationDefinition(Resource):
     pass
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class CompartmentDefinition(Resource):
     pass
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class BundleEntry(Element):
     resource: Union[
         StructureDefinition,
@@ -165,14 +170,14 @@ class BundleEntry(Element):
     ]
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class Bundle(Resource):
 
     type: Literal["collection"]
     entry: List[BundleEntry]
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class Container(JSONWizard):
     class _(JSONWizard.Meta):
         tag_key = "resourceType"

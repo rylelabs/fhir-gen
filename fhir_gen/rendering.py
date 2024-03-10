@@ -1,128 +1,70 @@
-from typing import TypeVar, Mapping, Optional, Dict, Sequence, Type
+from typing import Mapping, Iterable, Sequence, Callable, Optional
+import abc
 import os
 import os.path
 from pathlib import Path
 import shutil
 import dataclasses
-import importlib
 
-from dataclass_wizard import YAMLWizard
+
 from jinja2 import Environment, FileSystemLoader
 
 from . import parsing
 
 
-T_Target = TypeVar("T_Target")
+RenderInput = parsing.Output
 
 
-RenderInput = parsing.ParseOutput
+class Context(metaclass=abc.ABCMeta):
+
+    def __call__(self, input: RenderInput, variables: Mapping) -> Iterable[Mapping]: ...
 
 
 @dataclasses.dataclass
-class RenderConfig:
+class Artifact:
+    template_file: str
+    output_file: str
+    context: Context
+    post_process: Optional[Callable[[str], str]] = None
+
+
+class Preset:
+
+    root_dir: str
+    artifacts: Sequence[Artifact]
+
+    def setup(self, env: Environment): ...
+
+
+@dataclasses.dataclass
+class Config:
+    preset: Preset
     output_dir: str
-    template: str
     variables: Mapping = dataclasses.field(default_factory=dict)
-
-
-class Context:
-
-    def __call__(self, input: RenderInput, variables: Mapping) -> Optional[Mapping]:
-        return dict(variables)
-
-
-class FHIRTypeContext(Context):
-
-    cursor: int = 0
-
-    def __call__(self, input: RenderInput, variables: Mapping):
-        if self.cursor == len(input.types):
-            return
-
-        current = list(input.types.values())[self.cursor]
-        self.cursor += 1
-        return {"type_name": current.name, "dependencies": [], **variables}
-
-
-@dataclasses.dataclass
-class TemplateManifest(YAMLWizard):
-
-    @dataclasses.dataclass
-    class FileEntry:
-
-        context: Optional[str]  # type: ignore
-        _context: Type[Context] = dataclasses.field(repr=False, init=False)
-
-        @property
-        def context(self) -> Type[Context]:
-            return self._context
-
-        @context.setter
-        def context(self, value: Optional[str] = None):
-            if value:
-                parts = value.split(".")
-                mod = importlib.import_module(".".join(parts[:-1]))
-                self._context = getattr(mod, parts[-1])
-            else:
-                self._context = Context
-
-        output_file: Optional[str] = None
-
-    files: Dict[str, FileEntry]
-
-
-def output_file_from_template_file(filename: str, suffix: str = ".tmpl"):
-    if not filename.endswith(suffix):
-        raise ValueError(filename)
-
-    return filename[: -len(suffix)]
 
 
 class Renderer:
 
-    @dataclasses.dataclass
-    class Handler:
-        context: Type[Context]
-        template_file: str
-        output_file: str
-
-    _handlers: Sequence[Handler]
-
-    def __init__(self, config: RenderConfig) -> None:
-        self.root_dir = os.path.abspath(config.template)
+    def __init__(self, config: Config) -> None:
         self.output_dir = os.path.abspath(config.output_dir)
         self.variables = dict(config.variables)
-        manifest = TemplateManifest.from_yaml_file(
-            os.path.join(self.root_dir, "manifest.yaml")
-        )
-
-        assert isinstance(manifest, TemplateManifest)
-
-        self._handlers = [
-            self.Handler(
-                context=entry.context,
-                template_file=template_file,
-                output_file=entry.output_file
-                or output_file_from_template_file(template_file),
-            )
-            for template_file, entry in manifest.files.items()
-        ]
+        self.preset = config.preset
 
     def __call__(self, input: RenderInput):
 
-        env = Environment(loader=FileSystemLoader(self.root_dir))
+        env = Environment(loader=FileSystemLoader(self.preset.root_dir))
+        self.preset.setup(env)
+
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
 
-        for handler in self._handlers:
-            context = handler.context()
-            template = env.get_template(os.path.join(handler.template_file))
-            while True:
-                template_variables = context(input, self.variables)
-                if template_variables is None:
-                    break
+        for artifact in self.preset.artifacts:
 
-                output_file = env.from_string(handler.output_file).render(
+            template = env.get_template(os.path.join(artifact.template_file))
+
+            for template_variables in artifact.context(input, self.variables):
+
+                output_file = env.from_string(artifact.output_file).render(
                     template_variables
                 )
 
@@ -136,4 +78,7 @@ class Renderer:
                     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
                 with open(output_file, "w") as f:
-                    f.write(template.render(template_variables))
+                    out = template.render(template_variables)
+                    if artifact.post_process is not None:
+                        out = artifact.post_process(out)
+                    f.write(out)

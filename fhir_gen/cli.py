@@ -1,25 +1,24 @@
 import os
 import sys
 import logging
-from typing import Optional, Mapping, Type
+from typing import Optional
 
 from jsonargparse import CLI
 
 from .definitions import Definitions
-from .parsing import Parser
-from .rendering import RenderConfig, Renderer
+from .parsing import Config as ParserConfig, Parser
+from .rendering import Config as RendererConfig, Renderer
 
 
 def generate(
     definitions: Definitions,
-    rendering: RenderConfig,
+    renderer: RendererConfig,
+    parser: ParserConfig,
     cache_dir: Optional[str] = None,
-    mappings: Optional[Mapping[str, Type]] = None,
 ):
-    parser = Parser(mappings=mappings)
-    renderer = Renderer(rendering)
-
-    renderer(parser(definitions.iter_resources(cache_dir=cache_dir)))
+    parser_ = Parser(parser)
+    renderer_ = Renderer(renderer)
+    renderer_(parser_(definitions.iter_resources(cache_dir=cache_dir)))
 
 
 def main():

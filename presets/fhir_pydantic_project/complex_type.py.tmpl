@@ -1,0 +1,17 @@
+from typing import Union
+from pydantic import BaseModel
+
+{% if import_modules %}
+from . import {{ import_modules|join(",") }}
+{% endif %}
+
+{% for type in types %}
+class {{ type.name }}({% if type.base %}{{ type.base|type_reference }}{% else %}BaseModel{% endif %}):
+    """
+    {{ type.url }}
+    """
+    {% for prop in type.properties %}
+    {{ prop|prop_name }}: {{ prop|prop_type_annotation }}
+    {% endfor %}
+
+{% endfor %}

@@ -1,9 +1,10 @@
 rendering:
-  template: templates/pydantic_project
+  preset:
+    class_path: fhir_pydantic_project.FHIRPydanticPreset
   output_dir: generated/ccda-on-fhir-pydantic
   variables:
     project_name: ccda-on-fhir-pydantic
-    package_name: ccda_on_fhir_pydantic
+    package_name: ccda_on_fhir_pydantc
 definitions:
   class_path: fhir_gen.Definitions
   init_args:
@@ -11,6 +12,6 @@ definitions:
     version: 1.2.0
     sources:
       - StructureDefinition-US-Realm-Header.json
-mappings:
-  "http://hl7.org/fhirpath/System.String": builtins.str
-  
+parser:
+  mappings:
+    "http://hl7.org/fhirpath/System.String": string

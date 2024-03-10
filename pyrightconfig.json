@@ -1,7 +1,8 @@
 {
   "venvPath": ".venv",
   "include": [
-    "fhir_gen"
+    "fhir_gen",
+    "presets/fhir_pydantic_project"
   ],
   "typeCheckingMode": "standard",
   "reportIncompatibleMethodOverride": "information"

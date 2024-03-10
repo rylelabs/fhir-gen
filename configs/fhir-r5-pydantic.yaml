@@ -1,5 +1,6 @@
-rendering:
-  template: templates/pydantic_project
+renderer:
+  preset:
+    class_path: fhir_pydantic_project.FHIRPydanticPreset
   output_dir: generated/fhir-r5-pydantic
   variables:
     project_name: fhir-r5-pydantic
@@ -14,6 +15,8 @@ definitions:
       - valuesets.json
       - profiles-types.json
       - profiles-resources.json
-mappings:
-  "http://hl7.org/fhirpath/System.String": builtins.str
+parser:
+  base_url: http://hl7.org/fhir
+  mappings:
+    "http://hl7.org/fhirpath/System.String": http://hl7.org/fhir/StructureDefinition/string
   

@@ -1,4 +1,0 @@
-files:
-  fhir_class.py.tmpl:
-    context: fhir_gen.FHIRTypeContext
-    output_file: "{{package_name}}/{{ type_name }}.py"
