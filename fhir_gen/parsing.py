@@ -273,8 +273,8 @@ class Parser(Visitor[definitions.Base]):
 
                 values: Mapping = dict(
                     name=property_name,
-                    min=0,
-                    max=1,
+                    min=node.min,
+                    max=-1 if node.max == "*" else int(node.max),
                 )
 
                 for child in node.type:

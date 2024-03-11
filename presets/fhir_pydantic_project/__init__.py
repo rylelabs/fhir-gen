@@ -34,9 +34,12 @@ def type_reference(context: Mapping, type: parsing.FHIRType):
 @jinja2.pass_context
 def prop_type_annotation(context: Mapping, prop: parsing.FHIRProperty):
     choices = [f'"{type_reference(context, type)}"' for type in prop.type]
-    if len(choices) == 1:
-        return choices[0]
-    return f"Union[{','.join(choices)}]"
+    annotation = choices[0] if len(choices) == 1 else f"Union[{','.join(choices)}]"
+    if prop.min == 0 and prop.max == 1:
+        annotation = f"Optional[{annotation}]"
+    elif prop.max == -1:
+        annotation = f"Sequence[{annotation}]"
+    return annotation
 
 
 def prop_name(prop: parsing.FHIRProperty):
