@@ -1,21 +1,20 @@
 renderer:
   preset:
     class_path: fhir_pydantic_project.FHIRPydanticPreset
-  output_dir: generated/fhir-r5-pydantic
+  output_dir: generated/fhir-r4-pydantic
   variables:
-    project_name: fhir-r5-pydantic
+    project_name: fhir-r4-pydantic
     package_name: fhir_pydantic
 definitions:
   class_path: fhir_gen.Definitions
   init_args:
-    url: https://hl7.org/fhir/R5/definitions.json.zip
-    version: R5
+    url: https://hl7.org/fhir/R4/definitions.json.zip
+    version: R4
     sources:
       - dataelements.json
       - valuesets.json
       - profiles-types.json
       - profiles-resources.json
-      - profiles-others.json
 parser:
   base_url: http://hl7.org/fhir
   mappings:

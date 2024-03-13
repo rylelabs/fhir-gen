@@ -2,15 +2,15 @@ from typing import (
     Iterable,
     Sequence,
     Mapping,
-    Optional,
-    TypeVar,
-    Hashable,
-    Generic,
-    cast,
-    List,
     Dict,
+    Optional,
+    Callable,
+    Hashable,
+    List,
     Any,
     Deque,
+    Generator,
+    Tuple,
 )
 import dataclasses
 import collections
@@ -21,58 +21,16 @@ from . import definitions
 from .utils import Visitor
 
 
-T_Ref = TypeVar("T_Ref")
-
-
-class RefUnresolvedError(Exception):
-    pass
-
-
-class Ref(Generic[T_Ref]):
-
-    _value: Optional[T_Ref] = None
-    _is_resolved: bool = False
-
-    def __init__(self, repr: Optional[str] = None) -> None:
-        self._repr = repr
-
-    def __call__(self) -> T_Ref:
-        if not self._is_resolved:
-            raise RefUnresolvedError(self._repr)
-        return cast(T_Ref, self._value)
-
-    @property
-    def is_resolved(self):
-        return self._is_resolved
-
-    def resolve(self, value: T_Ref):
-        if self._is_resolved:
-            raise RuntimeError()
-        self._value = value
-        self._is_resolved = True
-
-    @classmethod
-    def resolved(cls, value: T_Ref) -> "Ref[T_Ref]":
-        ref = Ref()
-        ref.resolve(value)
-        return ref
-
-    def __repr__(self) -> str:
-        if self._is_resolved:
-            return repr(self._value)
-        return f"Unresolved Ref: '{self._repr}'"
-
-
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class FHIRType(Hashable):
     url: str
     name: str
     inline: bool = False
-    _base: Optional[Ref["FHIRType"]] = None
+    base: Optional["FHIRType"] = None
 
-    @property
-    def base(self):
-        return self._base() if self._base else None
+    def __post_init__(self):
+        if not self.name.isidentifier():
+            raise ValueError(self.name)
 
     @property
     def dependencies(self):
@@ -82,10 +40,9 @@ class FHIRType(Hashable):
         return hash((self.url, self.name))
 
 
-@dataclasses.dataclass(kw_only=True, frozen=True)
+@dataclasses.dataclass(kw_only=True, frozen=True, eq=False)
 class FHIRPrimitiveType(FHIRType):
-    def __hash__(self) -> int:
-        return super().__hash__()
+    pass
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -94,19 +51,12 @@ class FHIRProperty:
     min: int
     max: int
 
-    _type: Sequence[Ref[FHIRType]]
-
-    @property
-    def type(self):
-        return [elt() for elt in self._type]
+    type: Sequence[FHIRType]
 
 
-@dataclasses.dataclass(kw_only=True, frozen=True)
+@dataclasses.dataclass(kw_only=True, frozen=True, eq=False)
 class FHIRComplexType(FHIRType):
     properties: List[FHIRProperty] = dataclasses.field(default_factory=list)
-
-    def __hash__(self) -> int:
-        return super().__hash__()
 
     @property
     def dependencies(self):
@@ -138,11 +88,29 @@ class Config:
     mappings: Mapping[str, str] = dataclasses.field(default_factory=dict)
 
 
-class Parser(Visitor[definitions.Base]):
+class Instruction:
+    pass
+
+
+class Requirement(Instruction):
+    def __init__(self, predicate: Callable[[], bool]) -> None:
+        self._predicate = predicate
+
+    def __call__(self) -> bool:
+        return self._predicate()
+
+
+VisitOutput = Generator[Instruction, Any, Any]
+
+
+Task = Tuple[definitions.Base, VisitOutput, Optional[Instruction]]
+
+
+class Parser(Visitor[definitions.Base, VisitOutput]):
 
     _contexts: Deque[Context]
-    _type_refs: Dict[str, Ref[FHIRType]]
     _types: List[FHIRType]
+    _resolved_types: Dict[str, FHIRType]
 
     def __init__(self, config: Config) -> None:
         self._base_url = config.base_url
@@ -154,20 +122,26 @@ class Parser(Visitor[definitions.Base]):
     def context(self):
         return self._contexts[-1]
 
+    def append_type(self, type: FHIRType):
+        assert type not in self._types, type.name
+        self._types.append(type)
+        self.resolve_type(type)
+
+    def resolve_type(self, type: FHIRType):
+        if not type.inline:
+            self._resolved_types[type.url] = type
+
     def new_context(self, **updates):
         return Context(**{**dataclasses.asdict(self.context), **updates})
 
-    def require_type(self, url: str) -> Ref[FHIRType]:
+    def require_type(self, url: str) -> VisitOutput:
         if url in self._mappings:
             url = self._mappings[url]
 
-        if url in self._type_refs:
-            ref = self._type_refs[url]
-        else:
-            ref = Ref(url)
-            self._type_refs[url] = ref
+        if url not in self._resolved_types:
+            yield Requirement(lambda: url in self._resolved_types)
 
-        return ref
+        return self._resolved_types[url]
 
     @contextlib.contextmanager
     def with_context(self, context: Context):
@@ -175,66 +149,77 @@ class Parser(Visitor[definitions.Base]):
         yield None
         assert self._contexts.pop() is context
 
-    def visit_CodeSystem(self, node: definitions.CodeSystem):
-        pass
+    def visit_CodeSystem(self, node: definitions.CodeSystem) -> VisitOutput:
+        yield from ()
 
-    def visit_ValueSet(self, node: definitions.ValueSet):
-        pass
+    def visit_ValueSet(self, node: definitions.ValueSet) -> VisitOutput:
+        yield from ()
 
     def parse_FHIRComplexType_ElementDefinitions(
         self,
         current: FHIRComplexType,
         nodes: Iterable[definitions.ElementDefinition],
-        path: Optional[definitions.Path] = None,
-    ):
+        path: definitions.Path,
+    ) -> VisitOutput:
         remaining: List[definitions.ElementDefinition] = []
-        with self.with_context(
-            self.new_context(
-                scope=current,
-                path=path or self.context.path + current.name,
-            )
-        ):
 
-            inline_property_values: List[Mapping] = []
+        with self.with_context(self.new_context(scope=current, path=path)):
+
+            inline_properties: Dict[str, List[Mapping]] = collections.defaultdict(list)
 
             for node in nodes:
-                if self.visit(node) is NotImplemented:
+                out = yield from self.visit(node)
+                if out is NotImplemented:
                     if self.context.stack:
-                        inline_property_values.append(self.context.stack.pop())
+                        prop_values = self.context.stack.pop()
+                        inline_properties[prop_values["name"]].append(prop_values)
                     else:
                         remaining.append(node)
 
-            for prop_values in inline_property_values:
-                name = f"{current.name}{prop_values['name'].capitalize()}"
+            for prop_name, prop_values in inline_properties.items():
+                prop_values = prop_values[0]
+                if len(prop_values) > 1:
+                    # TODO: handle this
+                    pass
+                name = f"{current.name}{prop_name.capitalize()}"
                 inline = FHIRComplexType(name=name, url=current.url, inline=True)
-                path = self.context.path + prop_values["name"]
+                path = self.context.path + prop_name
                 nodes = list(filter(lambda elt: elt.path > path, remaining))
+                remaining = [node for node in remaining if node not in nodes]
 
-                self.parse_FHIRComplexType_ElementDefinitions(
+                remaining += yield from self.parse_FHIRComplexType_ElementDefinitions(
                     inline,
                     nodes,
                     path=path,
                 )
 
                 self.context.scope.properties.append(
-                    FHIRProperty(
-                        _type=[Ref.resolved(inline)],  # type: ignore
-                        **prop_values,
-                    )
+                    FHIRProperty(type=[inline], **prop_values)
                 )
 
-                self._types.append(inline)
+                self.append_type(inline)
 
-    def visit_StructureDefinition(self, node: definitions.StructureDefinition):
+        return remaining
+
+    def visit_StructureDefinition(
+        self, node: definitions.StructureDefinition
+    ) -> VisitOutput:
 
         current: Optional[FHIRType] = None
 
         values: Mapping[str, Any] = {
-            "name": node.name,
+            "name": node.type,
             "url": node.url,
         }
+
+        if node.derivation == "constraint":
+            if node.kind == "resource":
+                values["name"] = node.name
+            else:
+                return NotImplemented
+
         if node.baseDefinition:
-            values["_base"] = self.require_type(node.baseDefinition)
+            values["base"] = yield from self.require_type(node.baseDefinition)
 
         if node.kind == "complex-type":
             current = FHIRComplexType(**values)
@@ -244,24 +229,35 @@ class Parser(Visitor[definitions.Base]):
             current = FHIRComplexType(**values)
 
         if isinstance(current, FHIRComplexType):
-            self.parse_FHIRComplexType_ElementDefinitions(
-                current,
+            nodes = list(
                 filter(
                     lambda node: isinstance(node, definitions.ElementDefinition),
                     node.snapshot.element,
-                ),
+                )
             )
 
-        if isinstance(current, FHIRType):
-            self._types.append(current)
+            cursor = current
+            while cursor is not None and nodes:
+                nodes = yield from self.parse_FHIRComplexType_ElementDefinitions(
+                    current,
+                    nodes,
+                    path=self.context.path + cursor.name,
+                )
+                cursor = cursor.base
 
-    def visit_ElementDefinition(self, node: definitions.ElementDefinition):
+        if isinstance(current, FHIRType):
+            self.append_type(current)
+
+    def visit_ElementDefinition(
+        self, node: definitions.ElementDefinition
+    ) -> VisitOutput:
         assert node.id
         assert self.context.path
         assert self.context.scope is not None
 
         if node.path == self.context.path:
             return
+
         elif node.path > self.context.path:
             parts = node.path[len(self.context.path) :]
             if len(parts) == 1:
@@ -282,19 +278,23 @@ class Parser(Visitor[definitions.Base]):
                         assert len(node.type) == 1
                         self.context.stack.append(values)
                         return NotImplemented
-                    elif self.visit(child) is not NotImplemented:
-                        types.append(self.require_type(self.context.stack.pop()))
+
+                    out = yield from self.visit(child)
+
+                    if out is not NotImplemented:
+                        type = yield from self.require_type(self.context.stack.pop())
+                        types.append(type)
 
                 if types:
                     self.context.scope.properties.append(
-                        FHIRProperty(_type=types, **values)
+                        FHIRProperty(type=types, **values)
                     )
 
                 return
 
         return NotImplemented
 
-    def visit_Type(self, node: definitions.ElementDefinition.Type):
+    def visit_Type(self, node: definitions.ElementDefinition.Type) -> VisitOutput:
         if isinstance(self.context.scope, FHIRType):
             assert node.code != "BackboneElement"
             if node.code.startswith("http://"):
@@ -303,21 +303,36 @@ class Parser(Visitor[definitions.Base]):
                 url = f"{self._base_url}/StructureDefinition/{node.code}"
             self.context.stack.append(url)
 
+        yield from ()
+
     def __call__(self, nodes: Iterable[definitions.Base]) -> Output:
 
         self._contexts = collections.deque([Context()])
-        self._type_refs = {}
+        self._resolved_types = {}
         self._types = []
 
-        for node in nodes:
-            self.visit(node)
+        tasks: Sequence[Task] = [(node, self.visit(node), None) for node in nodes]
 
-        for type in self._types:
-            if not type.inline and type.url in self._type_refs:
-                self._type_refs[type.url].resolve(type)
+        while tasks:
+            next_tasks: Sequence[Task] = []
+            for node, gen, prev in tasks:
+                if not isinstance(gen, Generator):
+                    assert gen is NotImplemented
+                    continue
 
-        for ref in self._type_refs.values():
-            if not ref.is_resolved:
-                ref()
+                instruction = next(gen, None) if prev is None else prev
+                if instruction is None:
+                    continue
+
+                if isinstance(instruction, Requirement) and instruction():
+                    # Requirement met
+                    instruction = None
+
+                next_tasks.append((node, gen, instruction))
+
+            if tasks == next_tasks:
+                raise RuntimeError()
+
+            tasks = next_tasks
 
         return Output(types=list(self._types))

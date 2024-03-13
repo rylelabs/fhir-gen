@@ -1,4 +1,4 @@
-rendering:
+renderer:
   preset:
     class_path: fhir_pydantic_project.FHIRPydanticPreset
   output_dir: generated/ccda-on-fhir-pydantic
@@ -13,5 +13,7 @@ definitions:
     sources:
       - StructureDefinition-US-Realm-Header.json
 parser:
+  base_url: http://hl7.org/ccda-on-fhir
   mappings:
-    "http://hl7.org/fhirpath/System.String": string
+    "http://hl7.org/fhirpath/System.String": http://hl7.org/fhir/StructureDefinition/string
+  

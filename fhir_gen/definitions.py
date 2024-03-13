@@ -1,4 +1,4 @@
-from typing import Optional, List, Sequence, Literal, Union, Iterator, overload
+from typing import Optional, List, Sequence, Literal, Union, Iterator, Dict, overload
 from urllib.parse import urlsplit
 import requests
 import os.path
@@ -69,7 +69,7 @@ class Path(Sequence):
 class Resource(Base):
     id: str
     resourceType: str
-    meta: dict
+    meta: Dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -129,7 +129,7 @@ class StructureDefinition(Resource):
         Literal["resource"],
     ]
 
-    derivation: Optional[str] = None
+    derivation: Optional[Union[Literal["specialization"], Literal["constraint"]]] = None
     baseDefinition: Optional[str] = None
 
 

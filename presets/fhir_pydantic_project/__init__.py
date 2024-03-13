@@ -5,6 +5,8 @@ import os.path
 import jinja2
 import keyword
 from black import format_str, FileMode
+from black.parsing import InvalidInput
+import logging
 
 from fhir_gen import rendering, parsing
 from fhir_gen.rendering import RenderInput
@@ -65,13 +67,17 @@ class PrimitivesContext(rendering.Context):
             filter(isinstance_predicate(parsing.FHIRPrimitiveType), input.types)
         )
 
-        return [
-            {
-                "types": types,
-                "module_name": module_name_for_type(types[0]),
-                **variables,
-            }
-        ]
+        return (
+            [
+                {
+                    "types": types,
+                    "module_name": module_name_for_type(types[0]),
+                    **variables,
+                }
+            ]
+            if types
+            else []
+        )
 
 
 class ComplexTypeContext(rendering.Context):
@@ -102,7 +108,11 @@ class ComplexTypeContext(rendering.Context):
 
 
 def post_process_py(value: str) -> str:
-    return format_str(value, mode=FileMode())
+    try:
+        return format_str(value, mode=FileMode())
+    except InvalidInput:
+        logging.warn("Failed to format %s" % value)
+        return value
 
 
 class FHIRPydanticPreset(rendering.Preset):
